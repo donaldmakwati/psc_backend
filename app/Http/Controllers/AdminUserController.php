@@ -14,15 +14,14 @@ class AdminUserController extends Controller
 {
     public function storeAdmin(Request $request)
     {
-        
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'surname' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8|confirmed',
-            'address'=>  'required|string|max:255',
-            'phone'=> 'required|string|max:255'
-       
+            'address' => 'required|string|max:255',
+            'phone' => 'nullable|string|max:255|unique:users', // ✅ Phone is now unique and nullable
+            'gender' => ['nullable', Rule::in(['male', 'female'])], // ✅ Gender is now a nullable enum
         ]);
 
         $role = Role::where('name', 'admin')->first();
@@ -39,14 +38,14 @@ class AdminUserController extends Controller
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
             'staff_id' => $staffId,
-            'gender' => 'male', 
+            'gender' => $validated['gender'] ?? null, // ✅ Handle nullable gender
         ]);
 
         $user->roles()->attach($role);
 
         return response()->json([
             'message' => 'Admin created successfully.',
-            'user' => $user->only(['id', 'name', 'surname', 'email','phone','address', 'staff_id']),
+            'user' => $user->only(['id', 'name', 'surname', 'email', 'phone', 'address', 'staff_id']),
         ], 201);
     }
 
@@ -56,25 +55,25 @@ class AdminUserController extends Controller
     public function index()
     {
         $roleIds = Role::whereIn('name', ['staff', 'operator'])->pluck('id');
-        
+
         // Fetch all staff and operator users to calculate statistics
-        $allUsers = User::whereHas('roles', fn($q) => $q->whereIn('role_id', $roleIds))
+        $allUsers = User::whereHas('roles', fn ($q) => $q->whereIn('role_id', $roleIds))
             ->get();
 
         // Calculate statistics
         $statistics = [
             'total_users' => $allUsers->count(),
-            'role_counts' => $allUsers->groupBy(fn($user) => $user->roles->first()->name)
-                               ->map(fn($items) => $items->count()),
-            'gender_counts' => $allUsers->groupBy('gender')->map(fn($items) => $items->count()),
+            'role_counts' => $allUsers->groupBy(fn ($user) => $user->roles->first()->name)
+                ->map(fn ($items) => $items->count()),
+            'gender_counts' => $allUsers->groupBy('gender')->map(fn ($items) => $items->count()),
         ];
 
         // Get paginated users for the main table/list
-        $paginatedUsers = User::whereHas('roles', fn($q) => $q->whereIn('role_id', $roleIds))
+        $paginatedUsers = User::whereHas('roles', fn ($q) => $q->whereIn('role_id', $roleIds))
             ->select('id', 'name', 'surname', 'email', 'address', 'phone', 'gender', 'staff_id')
             ->with('roles:id,name')
             ->paginate(10);
-            
+
         return response()->json([
             'users' => $paginatedUsers,
             'statistics' => $statistics,
@@ -91,14 +90,13 @@ class AdminUserController extends Controller
             'surname' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'address' => 'nullable|string|max:255',
-            'phone' => 'nullable|string|max:20',
-            'gender' => ['required', Rule::in(['male', 'female'])],
+            'phone' => 'nullable|string|max:20|unique:users',
+            'gender' => ['nullable', Rule::in(['male', 'female'])],
             'password' => 'required|string|min:8|confirmed',
             'role' => ['required', Rule::in(['staff', 'operator'])],
         ]);
 
         $role = Role::where('name', $validated['role'])->firstOrFail();
-        //if (!$role) return response()->json(['message' => 'Invalid role.'], 400);
 
         $staffId = StaffIdGenerator::generateId($validated['role']);
         if (!$staffId) return response()->json(['message' => 'Failed to generate ID.'], 500);
@@ -145,8 +143,8 @@ class AdminUserController extends Controller
             'surname' => 'required|string|max:255',
             'email' => ['required', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
             'address' => 'nullable|string|max:255',
-            'phone' => 'nullable|string|max:20',
-            'gender' => ['required', Rule::in(['male', 'female'])],
+            'phone' => ['nullable', 'string', 'max:20', Rule::unique('users')->ignore($user->id)], // ✅ Updated unique phone rule
+            'gender' => ['nullable', Rule::in(['male', 'female'])], // ✅ Updated gender rule
             'password' => 'nullable|string|min:8|confirmed',
             'role' => ['required', Rule::in(['staff', 'operator'])],
         ]);
