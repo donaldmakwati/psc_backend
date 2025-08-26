@@ -28,7 +28,7 @@ class TripController extends Controller
     }
 
     /**
-     * Store a newly created trip in storage.
+     * Store a newly created trip in storage with advanced validation.
      * Only accessible by 'admin' role.
      *
      * @param  \Illuminate\Http\Request  $request
@@ -52,19 +52,37 @@ class TripController extends Controller
         if ($validator->fails()) {
             return response()->json(['message' => 'Validation failed.', 'errors' => $validator->errors()], 422);
         }
+        
+        // Find the bus and check its status before any other logic
+        $bus = Bus::findOrFail($request->bus_id);
+        if ($bus->status === 'under_maintenance') {
+            return response()->json(['message' => 'The selected bus is currently under maintenance and cannot be scheduled. 🛠️'], 400);
+        }
+        
+        // Find the route to get its code
+        $route = Route::findOrFail($request->route_id);
+
+        // 🕒 NEW CHECK: Scheduling Conflict
+        $departureTime = new \DateTime($request->departure_time);
+        $startTime = (clone $departureTime)->modify('-3 hours')->format('Y-m-d H:i:s');
+        $endTime = (clone $departureTime)->modify('+3 hours')->format('Y-m-d H:i:s');
+
+        // Check if the bus is already scheduled for another trip within the 3-hour window.
+        $existingTrip = Trip::where('bus_id', $request->bus_id)
+                            ->whereBetween('departure_time', [$startTime, $endTime])
+                            ->exists();
+
+        if ($existingTrip) {
+            return response()->json(['message' => 'This bus is already scheduled for another trip within 3 hours of the requested departure time. Please select a different time or bus. 🚫'], 400);
+        }
 
         try {
-            // Find the route to get its code, using findOrFail for robustness.
-            $route = Route::findOrFail($request->route_id);
-            
-            // ✅ CRITICAL FIX: The logic is now in the Trip model
-            // Generate the unique trip code using the new static method on the Trip model.
             $tripCode = Trip::generateTripCode($route->route_code);
 
             $trip = Trip::create([
                 'route_id' => $request->route_id,
                 'bus_id' => $request->bus_id,
-                'trip_code' => $tripCode, // Use the new generated code
+                'trip_code' => $tripCode,
                 'departure_time' => $request->departure_time,
                 'available_seats' => $request->available_seats,
             ]);

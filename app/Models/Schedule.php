@@ -14,7 +14,7 @@ class Schedule extends Model
         'bus_id',
         'departure_time',
         'arrival_time',
-        'price',
+        // 'price',
         'status',
     ];
 

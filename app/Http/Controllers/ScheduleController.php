@@ -60,7 +60,7 @@ class ScheduleController extends Controller
             'bus_id'         => 'required|exists:buses,id',
             'departure_time' => 'required|date',
             'arrival_time'   => 'required|date|after:departure_time',
-            'price'          => 'required|numeric|min:0',
+            // 'price'          => 'required|numeric|min:0',
             'status'         => 'in:scheduled,cancelled',
         ]);
 
@@ -83,7 +83,7 @@ class ScheduleController extends Controller
             'bus_id'         => 'sometimes|exists:buses,id',
             'departure_time' => 'sometimes|date',
             'arrival_time'   => 'sometimes|date|after:departure_time',
-            'price'          => 'sometimes|numeric|min:0',
+            // 'price'          => 'sometimes|numeric|min:0',
             'status'         => 'in:scheduled,cancelled',
         ]);
 

@@ -20,8 +20,8 @@ class AdminUserController extends Controller
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8|confirmed',
             'address' => 'required|string|max:255',
-            'phone' => 'nullable|string|max:255|unique:users', // ✅ Phone is now unique and nullable
-            'gender' => ['nullable', Rule::in(['male', 'female'])], // ✅ Gender is now a nullable enum
+            'phone' => 'nullable|string|max:255|unique:users',
+            'gender' => ['nullable', Rule::in(['male', 'female'])],
         ]);
 
         $role = Role::where('name', 'admin')->first();
@@ -38,7 +38,7 @@ class AdminUserController extends Controller
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
             'staff_id' => $staffId,
-            'gender' => $validated['gender'] ?? null, // ✅ Handle nullable gender
+            'gender' => $validated['gender'] ?? null,
         ]);
 
         $user->roles()->attach($role);
@@ -143,19 +143,22 @@ class AdminUserController extends Controller
             'surname' => 'required|string|max:255',
             'email' => ['required', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
             'address' => 'nullable|string|max:255',
-            'phone' => ['nullable', 'string', 'max:20', Rule::unique('users')->ignore($user->id)], // ✅ Updated unique phone rule
-            'gender' => ['nullable', Rule::in(['male', 'female'])], // ✅ Updated gender rule
+            'phone' => ['nullable', 'string', 'max:20', Rule::unique('users')->ignore($user->id)],
+            'gender' => ['nullable', Rule::in(['male', 'female'])],
+            // 📝 Make password not required for updates. Use `nullable` instead of `required`.
             'password' => 'nullable|string|min:8|confirmed',
             'role' => ['required', Rule::in(['staff', 'operator'])],
         ]);
 
-        $userData = collect($validated)->except('role')->toArray();
-
-        if (!empty($validated['password'])) {
-            $userData['password'] = Hash::make($validated['password']);
+        // 📝 The Fix: Use `filled` to check if a new password was provided
+        if ($request->filled('password')) {
+            $validated['password'] = Hash::make($validated['password']);
+        } else {
+            // Unset the password key to prevent an empty value from being passed
+            unset($validated['password']);
         }
 
-        $user->update($userData);
+        $user->update($validated);
 
         $role = Role::where('name', $validated['role'])->first();
         if ($role) $user->roles()->sync([$role->id]);

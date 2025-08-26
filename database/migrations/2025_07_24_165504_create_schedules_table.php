@@ -17,7 +17,7 @@ return new class extends Migration
             $table->foreignId('bus_id')->constrained('buses')->onDelete('cascade');
             $table->dateTime('departure_time');
             $table->dateTime('arrival_time');
-            $table->decimal('price', 10, 2);
+            // $table->decimal('price', 10, 2);
             $table->enum('status', ['scheduled', 'cancelled'])->default('scheduled');
             $table->timestamps(); // includes created_at and updated_at
         });
