@@ -15,8 +15,8 @@ return new class extends Migration
         Schema::create('trips', function (Blueprint $table) {
             $table->id();
             $table->foreignId('route_id')->constrained()->onDelete('cascade');
-            $table->foreignId('bus_id')->constrained()->onDelete('cascade');
-            // Added the unique trip_code column
+            $table->foreignId('bus_id')->constrained()->onDelete('cascade'); 
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');             
             $table->string('trip_code')->unique();
             $table->dateTime('departure_time');
             $table->integer('available_seats');

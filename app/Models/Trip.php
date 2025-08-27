@@ -2,12 +2,13 @@
 
 namespace App\Models;
 
-use App\Models\Route;
 use App\Models\Bus; 
+use App\Models\User;
+use App\Models\Route;
 use App\Models\Ticket;
+use Illuminate\Support\Str; 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Support\Str; 
 
 /**
  * Trip Model
@@ -20,6 +21,7 @@ class Trip extends Model
     protected $fillable = [
         'route_id',
         'bus_id',
+        'user_id',
         'trip_code',
         'departure_time',
         'available_seats'
@@ -40,7 +42,14 @@ class Trip extends Model
     {
         return $this->belongsTo(Bus::class);
     }
-
+    
+    /**
+     * A Trip belongs to a single User.
+     */
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
     /**
      * A Trip has many Tickets.
      */
@@ -49,17 +58,9 @@ class Trip extends Model
         return $this->hasMany(Ticket::class);
     }
 
-    /**
-     * Generates a unique trip code based on the route code.
-     * The code will be formatted as `ROUTE_CODE001` (e.g., HRE-GLN-VIEW-001).
-     *
-     * @param string $routeCode The code of the associated route.
-     * @return string The newly generated unique trip code.
-     */
+    
     public static function generateTripCode(string $routeCode): string
     {
-        // Find the last trip with a code that starts with the given route code.
-        // We order by the trip code to find the highest number.
         $lastTrip = self::where('trip_code', 'like', "{$routeCode}%")
                         ->orderByDesc('trip_code')
                         ->first();
@@ -68,17 +69,11 @@ class Trip extends Model
         $nextNumber = 1;
 
         if ($lastTrip && $lastTrip->trip_code) {
-            // If a last trip was found, extract the numeric part of the code.
-            // Example: "HRE-GLN-VIEW-005" -> substr finds "-005"
-            // The `(int)` cast handles converting this to a number, ignoring non-numeric parts.
             $lastIdNumber = (int) substr($lastTrip->trip_code, strlen($routeCode) + 1);
-            
-            // Increment the number for the new trip code.
             $nextNumber = $lastIdNumber + 1;
         }
 
-        // Format the ID: route code + a hyphen + zero-padded number.
-        // %03d ensures the number is padded with leading zeros to 3 digits.
+        
         return sprintf('%s-%03d', $routeCode, $nextNumber);
     }
 }

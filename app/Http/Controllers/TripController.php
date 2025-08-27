@@ -45,12 +45,19 @@ class TripController extends Controller
         $validator = Validator::make($request->all(), [
             'route_id' => 'required|exists:routes,id',
             'bus_id' => 'required|exists:buses,id',
+            'user_id' => 'required|exists:users,id', // 👈 Add validation for user_id
             'departure_time' => 'required|date_format:Y-m-d H:i:s|after:now',
             'available_seats' => 'required|integer|min:1',
         ]);
 
         if ($validator->fails()) {
             return response()->json(['message' => 'Validation failed.', 'errors' => $validator->errors()], 422);
+        }
+
+        // Check if the assigned user has the 'operator' role
+        $user = \App\Models\User::findOrFail($request->user_id);
+        if (!$user->isOperator()) {
+            return response()->json(['message' => 'The assigned user does not have the "operator" role. 🛑'], 400);
         }
         
         // Find the bus and check its status before any other logic
@@ -62,32 +69,45 @@ class TripController extends Controller
         // Find the route to get its code
         $route = Route::findOrFail($request->route_id);
 
-        // 🕒 NEW CHECK: Scheduling Conflict
+        // 🕒 CHECK: Scheduling Conflict for the bus
         $departureTime = new \DateTime($request->departure_time);
-        $startTime = (clone $departureTime)->modify('-3 hours')->format('Y-m-d H:i:s');
-        $endTime = (clone $departureTime)->modify('+3 hours')->format('Y-m-d H:i:s');
+        $busStartTime = (clone $departureTime)->modify('-3 hours')->format('Y-m-d H:i:s');
+        $busEndTime = (clone $departureTime)->modify('+3 hours')->format('Y-m-d H:i:s');
 
         // Check if the bus is already scheduled for another trip within the 3-hour window.
-        $existingTrip = Trip::where('bus_id', $request->bus_id)
-                            ->whereBetween('departure_time', [$startTime, $endTime])
+        $existingBusTrip = Trip::where('bus_id', $request->bus_id)
+                            ->whereBetween('departure_time', [$busStartTime, $busEndTime])
                             ->exists();
 
-        if ($existingTrip) {
+        if ($existingBusTrip) {
             return response()->json(['message' => 'This bus is already scheduled for another trip within 3 hours of the requested departure time. Please select a different time or bus. 🚫'], 400);
         }
+        
+        // 🕒 NEW CHECK: Scheduling Conflict for the operator (2-hour window)
+        $operatorStartTime = (clone $departureTime)->modify('-1 hour')->format('Y-m-d H:i:s');
+        $operatorEndTime = (clone $departureTime)->modify('+1 hour')->format('Y-m-d H:i:s');
+        
+        $existingOperatorTrip = Trip::where('user_id', $request->user_id)
+                                    ->whereBetween('departure_time', [$operatorStartTime, $operatorEndTime])
+                                    ->exists();
 
+        if ($existingOperatorTrip) {
+            return response()->json(['message' => 'An operator has already been assigned a trip within the next two hours. Please select a different operator or time. 🚫'], 400);
+        }
+        
         try {
             $tripCode = Trip::generateTripCode($route->route_code);
 
             $trip = Trip::create([
                 'route_id' => $request->route_id,
                 'bus_id' => $request->bus_id,
+                'user_id' => $request->user_id, // 👈 Add user_id to the trip creation
                 'trip_code' => $tripCode,
                 'departure_time' => $request->departure_time,
                 'available_seats' => $request->available_seats,
             ]);
 
-            $trip->load(['route', 'bus']);
+            $trip->load(['route', 'bus', 'user']); // Load the new 'user' relationship
 
             return response()->json([
                 'message' => 'Trip created successfully! ✨',
@@ -108,7 +128,7 @@ class TripController extends Controller
      */
     public function show($id)
     {
-        $trip = Trip::with(['route', 'bus'])->findOrFail($id);
+        $trip = Trip::with(['route', 'bus', 'user'])->findOrFail($id); // Load the 'user' relationship
         return response()->json(['message' => 'Trip details retrieved successfully. ℹ️', 'trip' => $trip]);
     }
 
@@ -131,6 +151,7 @@ class TripController extends Controller
         $validator = Validator::make($request->all(), [
             'route_id' => 'sometimes|required|exists:routes,id',
             'bus_id' => 'sometimes|required|exists:buses,id',
+            'user_id' => 'sometimes|required|exists:users,id', // 👈 Add validation for user_id on update
             'departure_time' => 'sometimes|required|date_format:Y-m-d H:i:s|after:now',
             'available_seats' => 'sometimes|required|integer|min:0',
         ]);
@@ -141,7 +162,7 @@ class TripController extends Controller
 
         try {
             $trip->update($request->all());
-            $trip->load(['route', 'bus']);
+            $trip->load(['route', 'bus', 'user']); // Load the 'user' relationship
             return response()->json(['message' => 'Trip updated successfully! ✅', 'trip' => $trip]);
 
         } catch (\Exception $e) {
