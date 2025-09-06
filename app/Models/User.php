@@ -9,9 +9,11 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use App\Services\StaffIdGenerator;
-use Tymon\JWTAuth\Contracts\JWTSubject; // ✅ Required for JWT
+use Tymon\JWTAuth\Contracts\JWTSubject;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\UserCredentialsEmail;
 
-class User extends Authenticatable implements JWTSubject // ✅ Implements JWTSubject
+class User extends Authenticatable implements JWTSubject
 {
     use HasApiTokens, HasFactory, Notifiable;
 
@@ -22,11 +24,11 @@ class User extends Authenticatable implements JWTSubject // ✅ Implements JWTSu
      */
     protected $fillable = [
         'name',
-        'surname',    
+        'surname',
         'email',
-        'address',    
-        'phone',      
-        'gender',     
+        'address',
+        'phone',
+        'gender',
         'password',
         'staff_id',
     ];
@@ -51,9 +53,18 @@ class User extends Authenticatable implements JWTSubject // ✅ Implements JWTSu
         'password' => 'hashed',
     ];
 
+    /**
+     * Model events for email automation
+     */
     protected static function booted(): void
     {
-        static::creating(function (User $user) {            
+        static::creating(function (User $user) {
+            // Any logic you want to run before creating user
+        });
+
+        static::created(function (User $user) {
+            // Send credentials email after user is created with roles
+            // We'll handle this in the controller to access the plain password
         });
     }
 
@@ -81,15 +92,10 @@ class User extends Authenticatable implements JWTSubject // ✅ Implements JWTSu
      *
      * @return bool
      */
-
-    // app/Models/User.php
-    
-
-   public function isAdmin(): bool
-{
-    return $this->hasRole('admin');
-}
-
+    public function isAdmin(): bool
+    {
+        return $this->hasRole('admin');
+    }
 
     /**
      * Check if the user is an Operator.
@@ -111,6 +117,18 @@ class User extends Authenticatable implements JWTSubject // ✅ Implements JWTSu
         return $this->hasRole('staff');
     }
 
+    /**
+     * Send credentials email to user
+     *
+     * @param string $plainPassword
+     * @return void
+     */
+    public function sendCredentialsEmail(string $plainPassword): void
+    {
+        // Queue the email for better performance
+        Mail::to($this->email)->queue(new UserCredentialsEmail($this, $plainPassword));
+    }
+
     // --- JWT Authentication Methods ---
 
     /**
@@ -130,7 +148,6 @@ class User extends Authenticatable implements JWTSubject // ✅ Implements JWTSu
      */
     public function getJWTCustomClaims(): array
     {
-       
         return [];
     }
 }

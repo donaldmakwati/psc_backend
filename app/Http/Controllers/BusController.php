@@ -51,11 +51,13 @@ class BusController extends Controller
         }
 
         $validated = $request->validate([
-            'bus_number' => 'required|unique:buses|max:50',
             'type' => 'required|in:AC,Non-AC,Sleeper,Seater',
             'capacity' => 'required|integer|min:1',
             'status' => 'in:active,maintenance',
         ]);
+
+        // Auto-generate bus_number
+        $validated['bus_number'] = $this->generateBusNumber();
 
         $bus = Bus::create($validated);
 
@@ -96,5 +98,28 @@ class BusController extends Controller
         $bus->delete();
 
         return response()->json(['message' => 'Bus deleted successfully.']);
+    }
+
+    /**
+     * Generate auto-incrementing bus number in format PSC-100X
+     * Starting from PSC-1000, then PSC-1001, PSC-1002, etc.
+     */
+    private function generateBusNumber()
+    {
+        // Get the latest bus number that matches the PSC-100X pattern
+        $latestBus = Bus::where('bus_number', 'like', 'PSC-100%')
+            ->orderBy('bus_number', 'desc')
+            ->first();
+
+        if (!$latestBus) {
+            // No existing bus, start with PSC-1000
+            return 'PSC-1000';
+        }
+
+        // Extract the number after PSC-100
+        $lastNumber = (int) substr($latestBus->bus_number, 7); // Get everything after "PSC-100"
+        $nextNumber = $lastNumber + 1;
+
+        return 'PSC-100' . $nextNumber;
     }
 }

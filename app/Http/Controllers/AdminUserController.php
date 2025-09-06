@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Http\Controllers;
 
 use App\Models\Role;
@@ -9,19 +8,45 @@ use Illuminate\Validation\Rule;
 use App\Services\StaffIdGenerator;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class AdminUserController extends Controller
 {
     public function storeAdmin(Request $request)
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'surname' => 'required|string|max:255',
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                'min:3',
+                'regex:/^[a-zA-Z]+$/'
+            ],
+            'surname' => [
+                'required',
+                'string',
+                'max:255',
+                'min:3',
+                'regex:/^[a-zA-Z]+$/'
+            ],
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8|confirmed',
             'address' => 'required|string|max:255',
-            'phone' => 'nullable|string|max:255|unique:users',
+            'phone' => [
+                'nullable',
+                'string',
+                'max:255',
+                'unique:users',
+                'regex:/^(\+263|0)(7[0-9]|8[6-8])[0-9]{7}$/'
+            ],
             'gender' => ['nullable', Rule::in(['male', 'female'])],
+        ], [
+            'name.regex' => 'This is not a name',
+            'name.min' => 'Enter proper name',
+            'surname.regex' => 'This is not a name',
+            'surname.min' => 'Enter proper name',
+            'phone.regex' => 'Please enter a valid Zimbabwean phone number',
         ]);
 
         $role = Role::where('name', 'admin')->first();
@@ -30,23 +55,44 @@ class AdminUserController extends Controller
         $staffId = StaffIdGenerator::generateId('admin');
         if (!$staffId) return response()->json(['message' => 'Failed to generate ID.'], 500);
 
-        $user = User::create([
-            'name' => $validated['name'],
-            'surname' => $validated['surname'],
-            'address' => $validated['address'],
-            'phone' => $validated['phone'],
-            'email' => $validated['email'],
-            'password' => Hash::make($validated['password']),
-            'staff_id' => $staffId,
-            'gender' => $validated['gender'] ?? null,
-        ]);
+        // Store plain password before hashing
+        $plainPassword = $validated['password'];
 
-        $user->roles()->attach($role);
+        try {
+            DB::beginTransaction();
 
-        return response()->json([
-            'message' => 'Admin created successfully.',
-            'user' => $user->only(['id', 'name', 'surname', 'email', 'phone', 'address', 'staff_id']),
-        ], 201);
+            $user = User::create([
+                'name' => $validated['name'],
+                'surname' => $validated['surname'],
+                'address' => $validated['address'],
+                'phone' => $validated['phone'],
+                'email' => $validated['email'],
+                'password' => Hash::make($validated['password']),
+                'staff_id' => $staffId,
+                'gender' => $validated['gender'] ?? null,
+            ]);
+
+            $user->roles()->attach($role);
+
+            // Send credentials email
+            $user->sendCredentialsEmail($plainPassword);
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Admin created successfully. Credentials have been sent to their email.',
+                'user' => $user->only(['id', 'name', 'surname', 'email', 'phone', 'address', 'staff_id']),
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Admin creation failed: ' . $e->getMessage());
+            
+            return response()->json([
+                'message' => 'Failed to create admin. Please try again.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
@@ -86,38 +132,84 @@ class AdminUserController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'surname' => 'required|string|max:255',
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                'min:3',
+                'regex:/^[a-zA-Z]+$/'
+            ],
+            'surname' => [
+                'required',
+                'string',
+                'max:255',
+                'min:3',
+                'regex:/^[a-zA-Z]+$/'
+            ],
             'email' => 'required|string|email|max:255|unique:users',
             'address' => 'nullable|string|max:255',
-            'phone' => 'nullable|string|max:20|unique:users',
+            'phone' => [
+                'nullable',
+                'string',
+                'min:9',
+                'max:11',
+                'unique:users',
+                'regex:/^(\+263|0)((7[0-9]|8[6-8])[0-9]{7}|(2[0-9]|4|8)[0-9]{5,6})$/'
+            ],
             'gender' => ['nullable', Rule::in(['male', 'female'])],
             'password' => 'required|string|min:8|confirmed',
             'role' => ['required', Rule::in(['staff', 'operator'])],
+        ], [
+            'name.regex' => 'This is not a name',
+            'name.min' => 'Enter proper name',
+            'surname.regex' => 'This is not a name',
+            'surname.min' => 'Enter proper name',
+            'phone.regex' => 'Please enter a valid Zimbabwean phone number',
         ]);
 
         $role = Role::where('name', $validated['role'])->firstOrFail();
-
         $staffId = StaffIdGenerator::generateId($validated['role']);
+        
         if (!$staffId) return response()->json(['message' => 'Failed to generate ID.'], 500);
 
-        $user = User::create([
-            'name' => $validated['name'],
-            'surname' => $validated['surname'],
-            'email' => $validated['email'],
-            'address' => $validated['address'],
-            'phone' => $validated['phone'],
-            'gender' => $validated['gender'],
-            'password' => Hash::make($validated['password']),
-            'staff_id' => $staffId,
-        ]);
+        // Store plain password before hashing
+        $plainPassword = $validated['password'];
 
-        $user->roles()->attach($role);
+        try {
+            DB::beginTransaction();
 
-        return response()->json([
-            'message' => 'User created successfully.',
-            'user' => $user->only(['id', 'name', 'surname', 'email', 'address', 'phone', 'gender', 'staff_id']),
-        ], 201);
+            $user = User::create([
+                'name' => $validated['name'],
+                'surname' => $validated['surname'],
+                'email' => $validated['email'],
+                'address' => $validated['address'],
+                'phone' => $validated['phone'],
+                'gender' => $validated['gender'],
+                'password' => Hash::make($validated['password']),
+                'staff_id' => $staffId,
+            ]);
+
+            $user->roles()->attach($role);
+
+            // Send credentials email
+            $user->sendCredentialsEmail($plainPassword);
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'User created successfully. Credentials have been sent to their email.',
+                'user' => $user->only(['id', 'name', 'surname', 'email', 'address', 'phone', 'gender', 'staff_id']),
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('User creation failed: ' . $e->getMessage());
+            
+            return response()->json([
+                'message' => 'Failed to create user. Please try again.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
@@ -139,34 +231,75 @@ class AdminUserController extends Controller
         }
 
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'surname' => 'required|string|max:255',
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                'min:3',
+                'regex:/^[a-zA-Z]+$/'
+            ],
+            'surname' => [
+                'required',
+                'string',
+                'max:255',
+                'min:3',
+                'regex:/^[a-zA-Z]+$/'
+            ],
             'email' => ['required', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
             'address' => 'nullable|string|max:255',
-            'phone' => ['nullable', 'string', 'max:20', Rule::unique('users')->ignore($user->id)],
+            'phone' => [
+                'nullable',
+                'string',
+                'min:9',
+                'max:11',
+                Rule::unique('users')->ignore($user->id),
+                'regex:/^(\+263|0)((7[0-9]|8[6-8])[0-9]{7}|(2[0-9]|4|8)[0-9]{5,6})$/'
+            ],
             'gender' => ['nullable', Rule::in(['male', 'female'])],
-            // 📝 Make password not required for updates. Use `nullable` instead of `required`.
             'password' => 'nullable|string|min:8|confirmed',
             'role' => ['required', Rule::in(['staff', 'operator'])],
+        ], [
+            'name.regex' => 'This is not a name',
+            'name.min' => 'Enter proper name',
+            'surname.regex' => 'This is not a name',
+            'surname.min' => 'Enter proper name',
+            'phone.regex' => 'Please enter a valid Zimbabwean phone number',
         ]);
 
-        // 📝 The Fix: Use `filled` to check if a new password was provided
-        if ($request->filled('password')) {
-            $validated['password'] = Hash::make($validated['password']);
-        } else {
-            // Unset the password key to prevent an empty value from being passed
-            unset($validated['password']);
+        try {
+            DB::beginTransaction();
+
+            // Handle password update
+            if ($request->filled('password')) {
+                $validated['password'] = Hash::make($validated['password']);
+                
+                // If password is being updated, send new credentials email
+                $user->sendCredentialsEmail($request->input('password'));
+            } else {
+                unset($validated['password']);
+            }
+
+            $user->update($validated);
+
+            $role = Role::where('name', $validated['role'])->first();
+            if ($role) $user->roles()->sync([$role->id]);
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'User updated successfully.' . ($request->filled('password') ? ' New credentials sent to email.' : ''),
+                'user' => $user->fresh('roles'),
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('User update failed: ' . $e->getMessage());
+            
+            return response()->json([
+                'message' => 'Failed to update user. Please try again.',
+                'error' => $e->getMessage()
+            ], 500);
         }
-
-        $user->update($validated);
-
-        $role = Role::where('name', $validated['role'])->first();
-        if ($role) $user->roles()->sync([$role->id]);
-
-        return response()->json([
-            'message' => 'User updated successfully.',
-            'user' => $user->fresh('roles'),
-        ]);
     }
 
     /**
@@ -179,7 +312,6 @@ class AdminUserController extends Controller
         }
 
         $user->delete();
-
         return response()->json(['message' => 'User deleted successfully.']);
     }
 }
