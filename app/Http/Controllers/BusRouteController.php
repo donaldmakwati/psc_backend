@@ -55,10 +55,7 @@ class BusRouteController extends Controller
         $validated = $request->validate([
             'route_code' => [
                 'required',
-                'string',
-                'min:4',
-                'unique:routes,route_code',
-                'regex:/^[A-Za-z0-9]+$/'
+                'unique:routes,route_code'
             ],
             'origin' => [
                 'required',
@@ -80,20 +77,12 @@ class BusRouteController extends Controller
                 'min:0.1',
                 'max:1000'
             ],
-            'estimated_time' => [
-                'required',
-                'string',
-                'max:50',
-                'regex:/^\d{1,2}:\d{2}$|^\d{1,2}h \d{2}m$|^\d{1,2} hours?$|^\d{1,2}h$|^\d{1,2}min$/'
-            ],
         ], [
-            'route_code.regex' => 'Route code must contain only letters and numbers',
             'origin.regex' => 'Origin must contain only letters and spaces',
             'origin.min' => 'Origin must be at least 2 characters',
             'destination.regex' => 'Destination must contain only letters and spaces',
             'destination.min' => 'Destination must be at least 2 characters',
             'distance_km.max' => 'Distance cannot exceed 1000 km',
-            'estimated_time.regex' => 'Time format must be like: 2:30, 2h 30m, 2 hours, 2h, or 30min',
         ]);
 
         $route = Route::create($validated);
@@ -118,10 +107,7 @@ class BusRouteController extends Controller
         $validated = $request->validate([
             'route_code' => [
                 'sometimes',
-                'string',
-                'min:4',
-                Rule::unique('routes')->ignore($id),
-                'regex:/^[A-Za-z0-9]+$/'
+                Rule::unique('routes')->ignore($id)
             ],
             'origin' => [
                 'sometimes',
@@ -143,20 +129,12 @@ class BusRouteController extends Controller
                 'min:0.1',
                 'max:1000'
             ],
-            'estimated_time' => [
-                'sometimes',
-                'string',
-                'max:50',
-                'regex:/^\d{1,2}:\d{2}$|^\d{1,2}h \d{2}m$|^\d{1,2} hours?$|^\d{1,2}h$|^\d{1,2}min$/'
-            ],
         ], [
-            'route_code.regex' => 'Route code must contain only letters and numbers',
             'origin.regex' => 'Origin must contain only letters and spaces',
             'origin.min' => 'Origin must be at least 2 characters',
             'destination.regex' => 'Destination must contain only letters and spaces',
             'destination.min' => 'Destination must be at least 2 characters',
             'distance_km.max' => 'Distance cannot exceed 1000 km',
-            'estimated_time.regex' => 'Time format must be like: 2:30, 2h 30m, 2 hours, 2h, or 30min',
         ]);
 
         $route->update($validated);
